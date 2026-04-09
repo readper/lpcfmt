@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/fluffos/lpcfmt/internal/formatter"
+	"github.com/readper/lpcfmt/internal/formatter"
 )
 
 const version = "1.0.0"

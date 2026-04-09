@@ -2,7 +2,7 @@ package ast
 
 import (
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/fluffos/lpcfmt/parser"
+	"github.com/readper/lpcfmt/parser"
 )
 
 // Builder converts ANTLR parse tree to AST
@@ -173,14 +173,23 @@ func (b *Builder) VisitFunction(ctx *parser.FunctionContext) interface{} {
 		fn.Name = ctx.Identifier().GetText()
 	}
 
-	// Get arguments (simplified for now)
-	if ctx.Argument() != nil {
-		// TODO: Parse arguments properly
-		argText := ctx.Argument().GetText()
-		if argText != "" {
-			fn.Arguments = append(fn.Arguments, &Argument{
-				Type: argText,
-			})
+	// Parse arguments by walking argument_list -> new_arg children so that
+	// type and name are handled as separate tokens and spaced correctly.
+	// Using GetText() on the whole Argument context concatenates all tokens
+	// without whitespace (known ANTLR behaviour).
+	if ctx.Argument() != nil && ctx.Argument().Argument_list() != nil {
+		for _, newArg := range ctx.Argument().Argument_list().AllNew_arg() {
+			arg := &Argument{}
+			if newArg.Arg_type() != nil {
+				arg.Type = newArg.Arg_type().GetText()
+			}
+			if newArg.Optional_star() != nil && newArg.Optional_star().GetText() == "*" {
+				arg.IsPointer = true
+			}
+			if newArg.New_local_name() != nil {
+				arg.Name = newArg.New_local_name().GetText()
+			}
+			fn.Arguments = append(fn.Arguments, arg)
 		}
 	}
 

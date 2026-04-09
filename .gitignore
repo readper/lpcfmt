@@ -5,7 +5,6 @@
 lpcfmt.exe
 /parser/
 *.jar
-go.sum
 .gradle/
 test_*.go
 test_*.lpc

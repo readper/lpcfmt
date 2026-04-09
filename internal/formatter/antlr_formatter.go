@@ -2,8 +2,8 @@ package formatter
 
 import (
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/fluffos/lpcfmt/internal/ast"
-	"github.com/fluffos/lpcfmt/parser"
+	"github.com/readper/lpcfmt/internal/ast"
+	"github.com/readper/lpcfmt/parser"
 )
 
 // FormatWithANTLR formats LPC source code using the ANTLR parser and AST
