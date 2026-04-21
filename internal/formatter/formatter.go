@@ -14,10 +14,16 @@ package formatter
 //     literal placeholders before formatting and restored afterwards.
 func Format(src string) (string, error) {
 	// 1. Detect and decode Big5 if needed.
-	utf8src, wasBig5, err := decodeIfBig5([]byte(src))
+	rawBytes := []byte(src)
+	utf8src, wasBig5, err := decodeIfBig5(rawBytes)
 	if err != nil {
 		// Cannot decode — return original unchanged.
 		return src, nil
+	}
+	// Build round-trip map so we can re-encode to the same Big5 code points.
+	var rtMap map[rune][]byte
+	if wasBig5 {
+		rtMap = buildRoundTripMap(rawBytes)
 	}
 
 	// 2. Extract heredocs.
@@ -34,7 +40,7 @@ func Format(src string) (string, error) {
 
 	// 5. Re-encode to Big5 if the original file was Big5.
 	if wasBig5 {
-		big5bytes, err := encodeToBig5(result)
+		big5bytes, err := encodeToBig5Canonical(result, rtMap)
 		if err != nil {
 			return src, nil
 		}
