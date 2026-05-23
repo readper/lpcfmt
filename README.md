@@ -71,6 +71,22 @@ go build -o lpcfmt ./cmd/lpcfmt
 gradlew.bat generateGoParser
 ```
 
+### Cross-compilation for FreeBSD (sta/prod server)
+
+The sta/prod MUD server runs FreeBSD (amd64). Build a FreeBSD binary on Mac:
+
+```bash
+GOOS=freebsd GOARCH=amd64 go build -o lpcfmt-freebsd ./cmd/lpcfmt
+```
+
+Upload to the server and set in `~/.config/gitd/config`:
+```
+LPCFMT_PATH=/usr/home/wfmud/bin/lpcfmt
+```
+
+> **Note:** If `LPCFMT_PATH` is not set, gitd skips formatting silently —
+> the PR flow is unaffected.
+
 ### Legacy C++ Version
 
 ```bash

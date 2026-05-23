@@ -87,6 +87,7 @@ SChar
     |   EscapeSequence
     |   '\\\n'   // Added line
     |   '\\\r\n' // Added line
+    |   '\\' [-￿] // Big5: allow \ before non-ASCII (許/功/蓋 second-byte=0x5C fix)
     ;
 
 fragment
