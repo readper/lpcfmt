@@ -24,8 +24,11 @@ func (c *Comment) String() string { return c.Text }
 
 // Program is the root node
 type Program struct {
-	Definitions []Definition
-	Comments    []*Comment
+	Definitions       []Definition
+	Comments          []*Comment
+	LeadingLines      [][]string // LeadingLines[i] = raw source lines before Definitions[i]
+	TrailingLines     []string   // raw source lines after the last definition
+	DefinitionRawLine []string   // DefinitionRawLine[i] = raw source line if the definition has inline comments (non-Function); else ""
 }
 
 func (p *Program) node()         {}
@@ -73,14 +76,15 @@ type VarName struct {
 
 // Function represents a function definition
 type Function struct {
-	Modifiers  []string // public, private, etc.
-	ReturnType string   // int, void, etc.
-	IsPointer  bool     // true if returns pointer
-	Name       string
-	Arguments  []*Argument
-	Body       *Block
-	IsSemi     bool // true if just declaration (no body)
-	Comments   []*Comment
+	Modifiers          []string // public, private, etc.
+	ReturnType         string   // int, void, etc.
+	IsPointer          bool     // true if returns pointer
+	Name               string
+	Arguments          []*Argument
+	Body               *Block
+	IsSemi             bool // true if just declaration (no body)
+	Comments           []*Comment
+	OpenBraceOnSameLine bool // true if original had K&R style: "func() {"
 }
 
 func (f *Function) node()       {}
@@ -101,6 +105,7 @@ type Argument struct {
 type Block struct {
 	LocalDecls []*LocalDecl
 	Statements []Statement
+	RawLines   []string // original source lines for this block (nil if not available)
 }
 
 func (b *Block) node()         {}

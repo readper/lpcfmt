@@ -1,6 +1,8 @@
 package formatter
 
 import (
+	"strings"
+
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/readper/lpcfmt/internal/ast"
 	"github.com/readper/lpcfmt/parser"
@@ -34,7 +36,8 @@ func FormatWithANTLR(src string) (string, error) {
 	}
 
 	// Build AST from parse tree
-	builder := ast.NewBuilder(stream)
+	srcLines := strings.Split(src, "\n")
+	builder := ast.NewBuilder(stream, srcLines)
 	astTree := builder.Build(tree)
 
 	// Format from AST

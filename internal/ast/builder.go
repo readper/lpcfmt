@@ -1,6 +1,8 @@
 package ast
 
 import (
+	"strings"
+
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/readper/lpcfmt/parser"
 )
@@ -8,13 +10,15 @@ import (
 // Builder converts ANTLR parse tree to AST
 type Builder struct {
 	parser.BaselpcVisitor
-	tokens *antlr.CommonTokenStream
+	tokens   *antlr.CommonTokenStream
+	srcLines []string // original source lines (1-indexed via srcLines[line-1])
 }
 
 // NewBuilder creates a new AST builder
-func NewBuilder(tokens *antlr.CommonTokenStream) *Builder {
+func NewBuilder(tokens *antlr.CommonTokenStream, srcLines []string) *Builder {
 	return &Builder{
-		tokens: tokens,
+		tokens:   tokens,
+		srcLines: srcLines,
 	}
 }
 
@@ -30,22 +34,85 @@ func (b *Builder) Build(tree parser.IProgramContext) *Program {
 // VisitProgram builds the root Program node
 func (b *Builder) VisitProgram(ctx *parser.ProgramContext) interface{} {
 	prog := &Program{
-		Definitions: []Definition{},
-		Comments:    []*Comment{},
+		Definitions:       []Definition{},
+		Comments:          []*Comment{},
+		LeadingLines:      [][]string{},
+		DefinitionRawLine: []string{},
 	}
 
-	// Collect all definitions
-	for _, def := range ctx.AllDef() {
-		if result := b.Visit(def); result != nil {
-			if d, ok := result.(Definition); ok {
-				prog.Definitions = append(prog.Definitions, d)
+	prevStopLine := 0
+	for _, defCtx := range ctx.AllDef() {
+		result := b.Visit(defCtx)
+		if result == nil {
+			continue
+		}
+		d, ok := result.(Definition)
+		if !ok {
+			continue
+		}
+
+		startToken := defCtx.GetStart()
+		stopToken := defCtx.GetStop()
+		if startToken == nil || stopToken == nil {
+			prog.LeadingLines = append(prog.LeadingLines, nil)
+			prog.DefinitionRawLine = append(prog.DefinitionRawLine, "")
+			prog.Definitions = append(prog.Definitions, d)
+			continue
+		}
+
+		startLine := startToken.GetLine() // 1-based
+		stopLine := stopToken.GetLine()   // 1-based
+
+		leading := b.gapLines(prevStopLine+1, startLine-1)
+		prog.LeadingLines = append(prog.LeadingLines, leading)
+
+		// For single-line non-Function definitions that contain inline comments,
+		// store the raw source line so it is emitted verbatim (preserving inline comments).
+		rawLine := ""
+		if _, isFunc := d.(*Function); !isFunc && startLine == stopLine && len(b.srcLines) >= startLine {
+			line := b.srcLines[startLine-1]
+			if strings.Contains(line, "//") || strings.Contains(line, "/*") {
+				rawLine = line
 			}
 		}
+		prog.DefinitionRawLine = append(prog.DefinitionRawLine, rawLine)
+
+		prog.Definitions = append(prog.Definitions, d)
+		prevStopLine = stopLine
 	}
 
-	// TODO: Collect comments from hidden channel
+	// Collect lines after the last definition (trailing preprocessor directives, etc.)
+	prog.TrailingLines = b.gapLines(prevStopLine+1, len(b.srcLines))
 
 	return prog
+}
+
+// gapLines returns srcLines[startLine-1 : endLine] (1-based, inclusive),
+// with leading blank lines removed (the previous definition's trailing newline covers them).
+func (b *Builder) gapLines(startLine, endLine int) []string {
+	if len(b.srcLines) == 0 || startLine > endLine {
+		return nil
+	}
+	if startLine < 1 {
+		startLine = 1
+	}
+	if endLine > len(b.srcLines) {
+		endLine = len(b.srcLines)
+	}
+	if startLine > endLine {
+		return nil
+	}
+	lines := make([]string, endLine-startLine+1)
+	copy(lines, b.srcLines[startLine-1:endLine])
+
+	// Strip leading blank lines — the previous definition's trailing newline covers them.
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return lines
 }
 
 // VisitDef dispatches to specific definition types
@@ -196,7 +263,12 @@ func (b *Builder) VisitFunction(ctx *parser.FunctionContext) interface{} {
 	// Get body
 	if ctx.Block_or_semi() != nil {
 		if ctx.Block_or_semi().Block() != nil {
-			if result := b.Visit(ctx.Block_or_semi().Block()); result != nil {
+			blockCtx := ctx.Block_or_semi().Block()
+			// Detect K&R brace style: { is on the same line as the function name.
+			if ctx.Identifier() != nil && blockCtx.GetStart() != nil && ctx.Identifier().GetStart() != nil {
+				fn.OpenBraceOnSameLine = blockCtx.GetStart().GetLine() == ctx.Identifier().GetStart().GetLine()
+			}
+			if result := b.Visit(blockCtx); result != nil {
 				if block, ok := result.(*Block); ok {
 					fn.Body = block
 				}
@@ -215,6 +287,25 @@ func (b *Builder) VisitBlock(ctx *parser.BlockContext) interface{} {
 	block := &Block{
 		LocalDecls: []*LocalDecl{},
 		Statements: []Statement{},
+	}
+
+	// Preserve the original source lines so comments are not lost.
+	startToken := ctx.GetStart()
+	stopToken := ctx.GetStop()
+	if len(b.srcLines) > 0 && startToken != nil && stopToken != nil {
+		startLine := startToken.GetLine()   // 1-based
+		startCol := startToken.GetColumn()  // 0-based column of `{`
+		stopLine := stopToken.GetLine()     // 1-based
+		if startLine >= 1 && stopLine <= len(b.srcLines) {
+			raw := make([]string, stopLine-startLine+1)
+			copy(raw, b.srcLines[startLine-1:stopLine])
+			// When `{` is not at column 0, the source line also contains the function
+			// signature before `{`. Trim so raw[0] starts at the `{` character.
+			if startCol > 0 && len(raw) > 0 && startCol < len(b.srcLines[startLine-1]) {
+				raw[0] = b.srcLines[startLine-1][startCol:]
+			}
+			block.RawLines = raw
+		}
 	}
 
 	// Get local declarations (simplified)

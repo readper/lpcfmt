@@ -26,9 +26,25 @@ func (f *Formatter) Format(prog *Program) string {
 	f.buf.Reset()
 	f.indent = 0
 
-	// Format all definitions
-	for _, def := range prog.Definitions {
+	for i, def := range prog.Definitions {
+		// Emit raw source lines that precede this definition (comments, preprocessor, etc.)
+		if i < len(prog.LeadingLines) {
+			for _, line := range prog.LeadingLines[i] {
+				f.writeln(line)
+			}
+		}
+		// For single-line definitions with inline comments, emit the raw source line verbatim.
+		if i < len(prog.DefinitionRawLine) && prog.DefinitionRawLine[i] != "" {
+			f.writeln(prog.DefinitionRawLine[i])
+			f.writeln("")
+			continue
+		}
 		f.formatDefinition(def)
+	}
+
+	// Emit trailing lines (e.g. #endif after last definition, or pure-preprocessor files)
+	for _, line := range prog.TrailingLines {
+		f.writeln(line)
 	}
 
 	// Clean up trailing whitespace
@@ -163,7 +179,11 @@ func (f *Formatter) formatFunction(fn *Function) {
 	if fn.IsSemi {
 		f.writeln(";")
 	} else if fn.Body != nil {
-		f.writeln("")
+		if fn.OpenBraceOnSameLine {
+			f.write(" ") // K&R style: "func() {"
+		} else {
+			f.writeln("") // Allman style: "func()\n{"
+		}
 		f.formatBlock(fn.Body)
 	}
 
@@ -172,6 +192,14 @@ func (f *Formatter) formatFunction(fn *Function) {
 
 // formatBlock formats a code block
 func (f *Formatter) formatBlock(block *Block) {
+	// If we have the original source lines, emit them verbatim to preserve comments.
+	if block.RawLines != nil {
+		for _, line := range block.RawLines {
+			f.writeln(line)
+		}
+		return
+	}
+
 	f.writeIndent()
 	f.writeln("{")
 	f.indent++
